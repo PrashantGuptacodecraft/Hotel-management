@@ -1,5 +1,10 @@
 // ============================================================
-// LUXE GRAND HOTEL — DATABASE SCHEMA
+// LUXE GRAND HOTEL — DATABASE SCHEMA (SQLite)
+// ------------------------------------------------------------
+// SQLite does NOT support Prisma enums or scalar lists, so:
+//   - all former enums are `String` fields (values enforced via
+//     zod validators in src/validators + constants in src/lib/enums.ts)
+//   - all former `String[]` are JSON strings (see src/lib/serialize.ts)
 // ============================================================
 
 generator client {
@@ -7,157 +12,102 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
-}
-
-// --- ENUMS ---
-enum UserRole {
-  ADMIN
-  MANAGER
-  RECEPTIONIST
-  HOUSEKEEPING
-  CONCIERGE
-  CHEF
-  SECURITY
-}
-
-enum RoomStatus {
-  AVAILABLE
-  OCCUPIED
-  CLEANING
-  MAINTENANCE
-  RESERVED
-  CHECKOUT
-}
-
-enum RoomType {
-  STANDARD
-  DELUXE
-  SUITE
-  PRESIDENTIAL
-  PENTHOUSE
-}
-
-enum LoyaltyTier {
-  BRONZE
-  SILVER
-  GOLD
-  PLATINUM
-}
-
-enum BookingStatus {
-  PENDING
-  CONFIRMED
-  CHECKED_IN
-  CHECKED_OUT
-  CANCELLED
-  NO_SHOW
-}
-
-enum BookingSource {
-  DIRECT
-  BOOKING_COM
-  EXPEDIA
-  AIRBNB
-  PHONE
-  WALKIN
-}
-
-enum TaskPriority {
-  LOW
-  MEDIUM
-  HIGH
-  URGENT
-}
-
-enum TaskStatus {
-  PENDING
-  IN_PROGRESS
-  COMPLETED
-  CANCELLED
-}
-
-enum TableStatus {
-  AVAILABLE
-  OCCUPIED
-  RESERVED
-  CLEANING
 }
 
 // --- MODELS ---
 
+// Single authentication entity for BOTH staff and customers.
+// role ∈ ADMIN | MANAGER | RECEPTIONIST | HOUSEKEEPING | CONCIERGE | CHEF | SECURITY | CUSTOMER
 model User {
-  id          String   @id @default(uuid())
-  name        String
-  email       String   @unique
-  password    String
-  role        UserRole @default(RECEPTIONIST)
-  department  String
-  avatar      String?
-  isOnline    Boolean  @default(false)
-  lastSeen    DateTime?
-  refreshToken String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                String    @id @default(uuid())
+  name              String
+  email             String    @unique
+  password          String
+  role              String    @default("CUSTOMER")
+  department        String?
+  avatar            String?
+  isOnline          Boolean   @default(false)
+  lastSeen          DateTime?
 
-  assignedTasks Task[] @relation("AssignedTasks")
-  createdTasks  Task[] @relation("CreatedTasks")
+  // Auth / security
+  emailVerified     Boolean   @default(false)
+  emailVerifyToken  String?
+  emailVerifyExpiry DateTime?
+  resetToken        String?
+  resetExpiry       DateTime?
+  refreshToken      String? // bcrypt hash of the active refresh token
+
+  // Customer ↔ CRM profile link (null for staff)
+  guestId           String?   @unique
+  guest             Guest?    @relation(fields: [guestId], references: [id])
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  assignedTasks Task[]         @relation("AssignedTasks")
+  createdTasks  Task[]         @relation("CreatedTasks")
+  notifications Notification[]
 
   @@map("users")
 }
 
+// status ∈ AVAILABLE | OCCUPIED | CLEANING | MAINTENANCE | RESERVED | CHECKOUT
+// type   ∈ STANDARD | DELUXE | SUITE | PRESIDENTIAL | PENTHOUSE
 model Room {
-  id           String     @id @default(uuid())
-  number       String     @unique
+  id           String    @id @default(uuid())
+  number       String    @unique
   floor        Int
-  type         RoomType
-  status       RoomStatus @default(AVAILABLE)
+  type         String    @default("STANDARD")
+  status       String    @default("AVAILABLE")
   basePrice    Float
   dynamicPrice Float
   capacity     Int
-  amenities    String[]
+  amenities    String    @default("[]") // JSON string[]
   view         String
   description  String?
-  images       String[]
+  images       String    @default("[]") // JSON string[]
   squareMeters Float?
-  temperature  Float      @default(22)
-  lighting     Int        @default(70)
+  temperature  Float     @default(22)
+  lighting     Int       @default(70)
   lastCleaned  DateTime?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  bookings     Booking[]
-  tasks        Task[]
+  bookings        Booking[]
+  tasks           Task[]
   maintenanceLogs MaintenanceLog[]
 
   @@map("rooms")
 }
 
+// loyaltyTier ∈ BRONZE | SILVER | GOLD | PLATINUM
 model Guest {
-  id             String      @id @default(uuid())
+  id             String    @id @default(uuid())
   name           String
-  email          String      @unique
+  email          String    @unique
   phone          String
   nationality    String
   passportNumber String?
   dateOfBirth    DateTime?
   avatar         String?
-  loyaltyTier    LoyaltyTier @default(BRONZE)
-  loyaltyPoints  Int         @default(0)
-  totalStays     Int         @default(0)
-  totalSpend     Float       @default(0)
-  sentimentScore Float       @default(0.5)
-  tags           String[]
-  isVIP          Boolean     @default(false)
-  isBlacklisted  Boolean     @default(false)
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  loyaltyTier    String    @default("BRONZE")
+  loyaltyPoints  Int       @default(0)
+  totalStays     Int       @default(0)
+  totalSpend     Float     @default(0)
+  sentimentScore Float     @default(0.5)
+  tags           String    @default("[]") // JSON string[]
+  isVIP          Boolean   @default(false)
+  isBlacklisted  Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  preferences    GuestPreference?
-  bookings       Booking[]
-  reviews        Review[]
-  messages       Message[]
+  user        User? // back-relation of User.guest (FK lives on User)
+  preferences GuestPreference?
+  bookings    Booking[]
+  reviews     Review[]
+  messages    Message[]
 
   @@map("guests")
 }
@@ -168,7 +118,7 @@ model GuestPreference {
   guest               Guest   @relation(fields: [guestId], references: [id], onDelete: Cascade)
   pillowType          String  @default("firm")
   floorPreference     String  @default("mid")
-  dietaryRestrictions String[]
+  dietaryRestrictions String  @default("[]") // JSON string[]
   roomTemperature     Float   @default(22)
   wakeUpCall          Boolean @default(false)
   newspaper           String  @default("none")
@@ -179,30 +129,32 @@ model GuestPreference {
   @@map("guest_preferences")
 }
 
+// status ∈ PENDING | CONFIRMED | CHECKED_IN | CHECKED_OUT | CANCELLED | NO_SHOW
+// source ∈ DIRECT | BOOKING_COM | EXPEDIA | AIRBNB | PHONE | WALKIN
 model Booking {
-  id              String        @id @default(uuid())
-  bookingNumber   String        @unique @default(cuid())
+  id              String    @id @default(uuid())
+  bookingNumber   String    @unique @default(cuid())
   guestId         String
-  guest           Guest         @relation(fields: [guestId], references: [id])
+  guest           Guest     @relation(fields: [guestId], references: [id])
   roomId          String
-  room            Room          @relation(fields: [roomId], references: [id])
+  room            Room      @relation(fields: [roomId], references: [id])
   checkIn         DateTime
   checkOut        DateTime
   nights          Int
-  adults          Int           @default(1)
-  children        Int           @default(0)
-  status          BookingStatus @default(PENDING)
-  source          BookingSource @default(DIRECT)
+  adults          Int       @default(1)
+  children        Int       @default(0)
+  status          String    @default("PENDING")
+  source          String    @default("DIRECT")
   totalAmount     Float
-  paidAmount      Float         @default(0)
-  currency        String        @default("USD")
+  paidAmount      Float     @default(0)
+  currency        String    @default("USD")
   specialRequests String?
   confirmedAt     DateTime?
   checkedInAt     DateTime?
   checkedOutAt    DateTime?
   cancelledAt     DateTime?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   addons  BookingAddon[]
   payment Payment[]
@@ -227,8 +179,8 @@ model Payment {
   booking       Booking  @relation(fields: [bookingId], references: [id])
   amount        Float
   currency      String   @default("USD")
-  method        String
-  status        String   @default("pending")
+  method        String   @default("card")
+  status        String   @default("pending") // pending | succeeded | failed | refunded
   stripeId      String?
   transactionId String?
   createdAt     DateTime @default(now())
@@ -236,37 +188,39 @@ model Payment {
   @@map("payments")
 }
 
+// priority ∈ LOW | MEDIUM | HIGH | URGENT
+// status   ∈ PENDING | IN_PROGRESS | COMPLETED | CANCELLED
 model Task {
-  id          String       @id @default(uuid())
-  title       String
-  description String?
+  id           String    @id @default(uuid())
+  title        String
+  description  String?
   assignedToId String
-  assignedTo  User         @relation("AssignedTasks", fields: [assignedToId], references: [id])
-  createdById String
-  createdBy   User         @relation("CreatedTasks", fields: [createdById], references: [id])
-  roomId      String?
-  room        Room?        @relation(fields: [roomId], references: [id])
-  priority    TaskPriority @default(MEDIUM)
-  status      TaskStatus   @default(PENDING)
-  category    String
-  dueAt       DateTime?
-  completedAt DateTime?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  assignedTo   User      @relation("AssignedTasks", fields: [assignedToId], references: [id])
+  createdById  String
+  createdBy    User      @relation("CreatedTasks", fields: [createdById], references: [id])
+  roomId       String?
+  room         Room?     @relation(fields: [roomId], references: [id])
+  priority     String    @default("MEDIUM")
+  status       String    @default("PENDING")
+  category     String
+  dueAt        DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@map("tasks")
 }
 
 model MaintenanceLog {
-  id          String   @id @default(uuid())
-  roomId      String
-  room        Room     @relation(fields: [roomId], references: [id])
-  issue       String
-  description String?
-  resolvedAt  DateTime?
-  cost        Float?
+  id           String    @id @default(uuid())
+  roomId       String
+  room         Room      @relation(fields: [roomId], references: [id])
+  issue        String
+  description  String?
+  resolvedAt   DateTime?
+  cost         Float?
   technicianId String?
-  createdAt   DateTime @default(now())
+  createdAt    DateTime  @default(now())
 
   @@map("maintenance_logs")
 }
@@ -285,13 +239,13 @@ model Review {
 }
 
 model Message {
-  id        String   @id @default(uuid())
-  guestId   String
-  guest     Guest    @relation(fields: [guestId], references: [id])
-  content   String
-  isFromGuest Boolean @default(true)
-  isAI      Boolean  @default(false)
-  createdAt DateTime @default(now())
+  id          String   @id @default(uuid())
+  guestId     String
+  guest       Guest    @relation(fields: [guestId], references: [id])
+  content     String
+  isFromGuest Boolean  @default(true)
+  isAI        Boolean  @default(false)
+  createdAt   DateTime @default(now())
 
   @@map("messages")
 }
@@ -308,4 +262,123 @@ model RevenueRecord {
   createdAt DateTime @default(now())
 
   @@map("revenue_records")
+}
+
+// type     ∈ booking | checkin | checkout | maintenance | payment | alert | message
+// priority ∈ low | normal | high
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   @default("alert")
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  priority  String   @default("normal")
+  actionUrl String?
+  createdAt DateTime @default(now())
+
+  @@map("notifications")
+}
+
+// ---------- RESTAURANT ----------
+// status ∈ AVAILABLE | OCCUPIED | RESERVED | CLEANING
+model RestaurantTable {
+  id          String    @id @default(uuid())
+  number      Int       @unique
+  capacity    Int
+  status      String    @default("AVAILABLE")
+  zone        String    @default("Main") // Main | Terrace | Private | Bar
+  x           Int        @default(0) // floor-plan grid column
+  y           Int        @default(0) // floor-plan grid row
+  reservedFor String?
+  reservedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  orders Order[]
+
+  @@map("restaurant_tables")
+}
+
+model MenuItem {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  category    String // Starters | Mains | Desserts | Beverages | Soups
+  price       Float
+  available   Boolean  @default(true)
+  prepTime    Int      @default(15)
+  calories    Int?
+  tags        String   @default("[]") // JSON string[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  orderItems OrderItem[]
+
+  @@map("menu_items")
+}
+
+// status ∈ PENDING | PREPARING | READY | SERVED | PAID | CANCELLED
+model Order {
+  id          String          @id @default(uuid())
+  orderNumber String          @unique @default(cuid())
+  tableId     String
+  table       RestaurantTable @relation(fields: [tableId], references: [id])
+  status      String          @default("PENDING")
+  subtotal    Float           @default(0)
+  tax         Float           @default(0)
+  total       Float           @default(0)
+  notes       String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  servedAt    DateTime?
+
+  items OrderItem[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id         String   @id @default(uuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItemId String
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
+  quantity   Int      @default(1)
+  price      Float
+  notes      String?
+
+  @@map("order_items")
+}
+
+// ---------- EVENTS ----------
+model EventVenue {
+  id       String       @id @default(uuid())
+  name     String       @unique
+  capacity Int
+  events   HotelEvent[]
+
+  @@map("event_venues")
+}
+
+// status ∈ TENTATIVE | CONFIRMED | IN_PROGRESS | COMPLETED | CANCELLED
+model HotelEvent {
+  id              String     @id @default(uuid())
+  title           String
+  description     String?
+  venueId         String
+  venue           EventVenue @relation(fields: [venueId], references: [id])
+  hostName        String
+  startDate       DateTime
+  endDate         DateTime
+  guestCount      Int        @default(0)
+  status          String     @default("TENTATIVE")
+  totalValue      Float      @default(0)
+  includes        String     @default("[]") // JSON string[]
+  assignedManager String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@map("hotel_events")
 }

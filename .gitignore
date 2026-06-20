@@ -8,3 +8,7 @@ dist/
 coverage/
 .cache/
 prisma/migrations/
+*.db
+*.db-journal
+*.sqlite
+dev.db*

@@ -31,6 +31,9 @@ export default {
         emerald: {
           hotel: '#00E5A0',
         },
+        success: '#00E5A0',
+        warning: '#FF9500',
+        danger: '#FF3B5C',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
