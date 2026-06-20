@@ -1,0 +1,311 @@
+// ============================================================
+// LUXE GRAND HOTEL — DATABASE SCHEMA
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- ENUMS ---
+enum UserRole {
+  ADMIN
+  MANAGER
+  RECEPTIONIST
+  HOUSEKEEPING
+  CONCIERGE
+  CHEF
+  SECURITY
+}
+
+enum RoomStatus {
+  AVAILABLE
+  OCCUPIED
+  CLEANING
+  MAINTENANCE
+  RESERVED
+  CHECKOUT
+}
+
+enum RoomType {
+  STANDARD
+  DELUXE
+  SUITE
+  PRESIDENTIAL
+  PENTHOUSE
+}
+
+enum LoyaltyTier {
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+  NO_SHOW
+}
+
+enum BookingSource {
+  DIRECT
+  BOOKING_COM
+  EXPEDIA
+  AIRBNB
+  PHONE
+  WALKIN
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum TableStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+  CLEANING
+}
+
+// --- MODELS ---
+
+model User {
+  id          String   @id @default(uuid())
+  name        String
+  email       String   @unique
+  password    String
+  role        UserRole @default(RECEPTIONIST)
+  department  String
+  avatar      String?
+  isOnline    Boolean  @default(false)
+  lastSeen    DateTime?
+  refreshToken String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  assignedTasks Task[] @relation("AssignedTasks")
+  createdTasks  Task[] @relation("CreatedTasks")
+
+  @@map("users")
+}
+
+model Room {
+  id           String     @id @default(uuid())
+  number       String     @unique
+  floor        Int
+  type         RoomType
+  status       RoomStatus @default(AVAILABLE)
+  basePrice    Float
+  dynamicPrice Float
+  capacity     Int
+  amenities    String[]
+  view         String
+  description  String?
+  images       String[]
+  squareMeters Float?
+  temperature  Float      @default(22)
+  lighting     Int        @default(70)
+  lastCleaned  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  bookings     Booking[]
+  tasks        Task[]
+  maintenanceLogs MaintenanceLog[]
+
+  @@map("rooms")
+}
+
+model Guest {
+  id             String      @id @default(uuid())
+  name           String
+  email          String      @unique
+  phone          String
+  nationality    String
+  passportNumber String?
+  dateOfBirth    DateTime?
+  avatar         String?
+  loyaltyTier    LoyaltyTier @default(BRONZE)
+  loyaltyPoints  Int         @default(0)
+  totalStays     Int         @default(0)
+  totalSpend     Float       @default(0)
+  sentimentScore Float       @default(0.5)
+  tags           String[]
+  isVIP          Boolean     @default(false)
+  isBlacklisted  Boolean     @default(false)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  preferences    GuestPreference?
+  bookings       Booking[]
+  reviews        Review[]
+  messages       Message[]
+
+  @@map("guests")
+}
+
+model GuestPreference {
+  id                  String  @id @default(uuid())
+  guestId             String  @unique
+  guest               Guest   @relation(fields: [guestId], references: [id], onDelete: Cascade)
+  pillowType          String  @default("firm")
+  floorPreference     String  @default("mid")
+  dietaryRestrictions String[]
+  roomTemperature     Float   @default(22)
+  wakeUpCall          Boolean @default(false)
+  newspaper           String  @default("none")
+  smokingRoom         Boolean @default(false)
+  extraBed            Boolean @default(false)
+  specialRequests     String?
+
+  @@map("guest_preferences")
+}
+
+model Booking {
+  id              String        @id @default(uuid())
+  bookingNumber   String        @unique @default(cuid())
+  guestId         String
+  guest           Guest         @relation(fields: [guestId], references: [id])
+  roomId          String
+  room            Room          @relation(fields: [roomId], references: [id])
+  checkIn         DateTime
+  checkOut        DateTime
+  nights          Int
+  adults          Int           @default(1)
+  children        Int           @default(0)
+  status          BookingStatus @default(PENDING)
+  source          BookingSource @default(DIRECT)
+  totalAmount     Float
+  paidAmount      Float         @default(0)
+  currency        String        @default("USD")
+  specialRequests String?
+  confirmedAt     DateTime?
+  checkedInAt     DateTime?
+  checkedOutAt    DateTime?
+  cancelledAt     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  addons  BookingAddon[]
+  payment Payment[]
+
+  @@map("bookings")
+}
+
+model BookingAddon {
+  id        String  @id @default(uuid())
+  bookingId String
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  name      String
+  price     Float
+  quantity  Int     @default(1)
+
+  @@map("booking_addons")
+}
+
+model Payment {
+  id            String   @id @default(uuid())
+  bookingId     String
+  booking       Booking  @relation(fields: [bookingId], references: [id])
+  amount        Float
+  currency      String   @default("USD")
+  method        String
+  status        String   @default("pending")
+  stripeId      String?
+  transactionId String?
+  createdAt     DateTime @default(now())
+
+  @@map("payments")
+}
+
+model Task {
+  id          String       @id @default(uuid())
+  title       String
+  description String?
+  assignedToId String
+  assignedTo  User         @relation("AssignedTasks", fields: [assignedToId], references: [id])
+  createdById String
+  createdBy   User         @relation("CreatedTasks", fields: [createdById], references: [id])
+  roomId      String?
+  room        Room?        @relation(fields: [roomId], references: [id])
+  priority    TaskPriority @default(MEDIUM)
+  status      TaskStatus   @default(PENDING)
+  category    String
+  dueAt       DateTime?
+  completedAt DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@map("tasks")
+}
+
+model MaintenanceLog {
+  id          String   @id @default(uuid())
+  roomId      String
+  room        Room     @relation(fields: [roomId], references: [id])
+  issue       String
+  description String?
+  resolvedAt  DateTime?
+  cost        Float?
+  technicianId String?
+  createdAt   DateTime @default(now())
+
+  @@map("maintenance_logs")
+}
+
+model Review {
+  id        String   @id @default(uuid())
+  guestId   String
+  guest     Guest    @relation(fields: [guestId], references: [id])
+  rating    Float
+  comment   String?
+  sentiment Float?
+  source    String   @default("direct")
+  createdAt DateTime @default(now())
+
+  @@map("reviews")
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  guestId   String
+  guest     Guest    @relation(fields: [guestId], references: [id])
+  content   String
+  isFromGuest Boolean @default(true)
+  isAI      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("messages")
+}
+
+model RevenueRecord {
+  id        String   @id @default(uuid())
+  date      DateTime @unique
+  rooms     Float    @default(0)
+  fnb       Float    @default(0)
+  spa       Float    @default(0)
+  events    Float    @default(0)
+  other     Float    @default(0)
+  total     Float    @default(0)
+  createdAt DateTime @default(now())
+
+  @@map("revenue_records")
+}
