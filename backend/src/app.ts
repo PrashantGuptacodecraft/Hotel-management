@@ -17,6 +17,10 @@ import { initSockets } from './socket'
 const app = express()
 const httpServer = createServer(app)
 
+// Render (and most hosts) sit behind a reverse proxy — trust it so secure
+// cookies and client IPs (for rate limiting) are handled correctly.
+if (isProd) app.set('trust proxy', 1)
+
 // --- Socket.io ---
 export const io = new Server(httpServer, {
   cors: { origin: env.FRONTEND_URL, methods: ['GET', 'POST'], credentials: true },

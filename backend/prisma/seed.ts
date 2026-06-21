@@ -72,6 +72,14 @@ const roomStatus = (): string => {
 }
 
 async function main() {
+  // Safe to run on every deploy: only seed when the DB is empty,
+  // unless FORCE_SEED=1 is set (which re-seeds from scratch).
+  const existingUsers = await prisma.user.count()
+  if (existingUsers > 0 && process.env.FORCE_SEED !== '1') {
+    console.log(`✅ Database already seeded (${existingUsers} users) — skipping. Set FORCE_SEED=1 to re-seed.`)
+    return
+  }
+
   console.log('🌱 Seeding Luxe Grand…')
 
   // ---- Clean (FK-safe order) ----

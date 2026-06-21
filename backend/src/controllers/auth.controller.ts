@@ -76,7 +76,11 @@ export async function register(req: Request, res: Response): Promise<void> {
     },
   })
 
-  await sendVerificationEmail(email, name, verifyLink(rawToken))
+  // Never let a flaky SMTP provider break registration — log & continue.
+  // The user can request a fresh link via "resend verification".
+  await sendVerificationEmail(email, name, verifyLink(rawToken)).catch((e) =>
+    console.error('Verification email failed to send:', e?.message)
+  )
 
   created(res, {
     message: 'Account created. Please check your email to verify your account before logging in.',
