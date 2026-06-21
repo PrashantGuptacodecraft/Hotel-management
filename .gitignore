@@ -1,14 +1,37 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
-.env
-.env.local
-.DS_Store
-*.log
+build/
 .vite/
-coverage/
-.cache/
-prisma/migrations/
+
+# Environment & secrets (NEVER commit these)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Claude Code local config (may contain machine-specific paths/permissions)
+.claude/
+CLAUDE.local.md
+
+# Database (SQLite)
 *.db
 *.db-journal
 *.sqlite
 dev.db*
+prisma/migrations/
+
+# Logs & caches
+*.log
+npm-debug.log*
+coverage/
+.cache/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
