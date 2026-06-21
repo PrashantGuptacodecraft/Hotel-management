@@ -1,4 +1,5 @@
 import 'express-async-errors'
+import path from 'path'
 import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
@@ -6,7 +7,7 @@ import morgan from 'morgan'
 import { createServer } from 'http'
 import { Server } from 'socket.io'
 
-import { env } from './config/env'
+import { env, isProd } from './config/env'
 import apiRoutes from './routes'
 import { globalLimiter } from './middleware/rateLimit'
 import { parseCookies } from './middleware/cookies'
@@ -37,6 +38,16 @@ if (!env.NODE_ENV.startsWith('test')) app.use(morgan('dev'))
 
 // --- API ---
 app.use('/api', globalLimiter, apiRoutes)
+
+// --- Serve the built frontend in production (same-origin = cookies just work) ---
+if (isProd) {
+  const clientDir = path.resolve(__dirname, '../../frontend/dist')
+  app.use(express.static(clientDir))
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/socket.io')) return next()
+    res.sendFile(path.join(clientDir, 'index.html'))
+  })
+}
 
 // --- 404 + centralized error handler (must be last) ---
 app.use(notFound)

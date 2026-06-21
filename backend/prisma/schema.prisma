@@ -12,6 +12,8 @@ generator client {
 }
 
 datasource db {
+  // Local dev uses SQLite. The Render build swaps this to "postgresql"
+  // automatically (see render.yaml) — the schema is otherwise identical.
   provider = "sqlite"
   url      = env("DATABASE_URL")
 }
